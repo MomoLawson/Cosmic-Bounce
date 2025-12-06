@@ -1,0 +1,7 @@
+{
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "name": "Cosmic Bounce",
+  "description": "A physics-based dynamic bouncing ball visualization set in a rotating cosmic polygon."
+}
