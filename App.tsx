@@ -10,19 +10,22 @@ export default function App() {
   const [config, setConfig] = useState<GameConfig>(INITIAL_CONFIG);
   const [paused, setPaused] = useState(false);
   const [restartTrigger, setRestartTrigger] = useState(0);
+  const [collisionCount, setCollisionCount] = useState(0);
 
   const handleRestart = () => {
     setRestartTrigger(prev => prev + 1);
+    setCollisionCount(0);
   };
   
   const text = t[config.language];
 
   return (
-    <div className="relative w-screen h-screen bg-black overflow-hidden font-sans touch-none">
+    <div className="relative w-screen h-[100dvh] bg-black overflow-hidden font-sans touch-none">
       <GameCanvas 
         config={config} 
         paused={paused}
         restartTrigger={restartTrigger}
+        setTotalCollisions={setCollisionCount}
       />
       <SettingsPanel 
         config={config} 
@@ -43,11 +46,14 @@ export default function App() {
       </div>
       
       {/* Overlay Title */}
-      <div className="absolute top-6 right-20 pointer-events-none opacity-80 select-none hidden md:block pr-4">
+      <div className="absolute top-6 right-20 pointer-events-none opacity-80 select-none hidden md:block pr-4 text-right">
         <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-cyan-400 to-purple-600 drop-shadow-lg tracking-tighter">
           {text.title}
         </h1>
-        <p className="text-right text-xs text-gray-500 font-mono mt-1">{text.subtitle}</p>
+        <p className="text-xs text-gray-500 font-mono mt-1 mb-2">{text.subtitle}</p>
+        <p className="text-lg font-bold text-cyan-200 drop-shadow-md font-mono">
+            {text.collisionCount}: <span className="text-white">{collisionCount}</span>
+        </p>
       </div>
     </div>
   );

@@ -36,6 +36,7 @@ export interface GameConfig {
   // New Features
   isGodMode: boolean;
   enableBallCollisions: boolean;
+  recordWallCollisions: boolean; // New: If true, wall hits count towards total collisions (relevant when ball collisions on)
   polygonLayers: number; // 1 to 20
   layerSpacing: number; // Distance between layers
   
@@ -64,6 +65,7 @@ export const INITIAL_CONFIG: GameConfig = {
   soundEnabled: false,
   isGodMode: false,
   enableBallCollisions: false,
+  recordWallCollisions: false, 
   polygonLayers: 1,
   layerSpacing: 60,
   baseScale: 1.0,

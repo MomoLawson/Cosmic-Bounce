@@ -8,6 +8,7 @@ interface GameCanvasProps {
   config: GameConfig;
   paused: boolean;
   restartTrigger: number;
+  setTotalCollisions: (n: number) => void;
 }
 
 const COLORS = [
@@ -21,19 +22,22 @@ const COLORS = [
   '#bc13fe', // Neon Purple
 ];
 
-const SUB_STEPS = 8; // Number of physics steps per frame for stability
+const SUB_STEPS = 10; // Increased for better collision precision
 
 type DragState = 
   | { type: 'BALL'; id: number; offset: Vector2 } 
   | { type: 'VELOCITY'; id: number } 
   | null;
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartTrigger }) => {
+export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartTrigger, setTotalCollisions }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [balls, setBalls] = useState<Ball[]>([]);
   const requestRef = useRef<number>(0);
   const rotationRef = useRef<number>(0);
   
+  // Collision Tracking
+  const collisionCountRef = useRef<number>(0);
+
   // Audio Refs
   const audioCtxRef = useRef<AudioContext | null>(null);
   const micAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -46,6 +50,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
   const dragStateRef = useRef<DragState>(null);
   const mousePosRef = useRef<Vector2>({ x: 0, y: 0 });
   const hoveredWallRef = useRef<string | null>(null);
+
+  // Long Press State
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartPosRef = useRef<Vector2 | null>(null);
 
   // We keep a mutable reference to balls for the animation loop
   const ballsRef = useRef<Ball[]>([]);
@@ -60,6 +68,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
         audioCtxRef.current?.close();
     };
   }, []);
+
+  // Sync Collision Count to Parent
+  useEffect(() => {
+    const interval = setInterval(() => {
+        setTotalCollisions(collisionCountRef.current);
+    }, 100);
+    return () => clearInterval(interval);
+  }, [setTotalCollisions]);
 
   // Initialize Microphone
   useEffect(() => {
@@ -164,6 +180,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
     const centerX = window.innerWidth / 2;
     const centerY = window.innerHeight / 2;
     const maxRadius = Math.min(window.innerWidth, window.innerHeight) * 0.45 * config.baseScale;
+    
+    // Reset collisions on restart
+    collisionCountRef.current = 0;
 
     for (let i = 0; i < config.ballCount; i++) {
       let pos, vel, radius, color;
@@ -235,6 +254,63 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
   }, [initBalls, restartTrigger]);
 
   // --- Interaction Handlers ---
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+    let radius, color;
+
+    if (config.randomSpawn) {
+        radius = 3 + Math.random() * 15;
+        color = `hsl(${Math.random() * 360}, 80%, 60%)`;
+    } else {
+        // Standard mode: Use set size with slight variation
+        radius = config.ballSize + (Math.random() * 2);
+        // Cycle colors
+        color = COLORS[ballsRef.current.length % COLORS.length];
+    }
+
+    const newBall: Ball = {
+        id: Date.now() + Math.random(), // Ensure unique ID
+        pos: mousePos,
+        vel: {
+            x: (Math.random() - 0.5) * 15,
+            y: (Math.random() - 0.5) * 15
+        },
+        radius: radius,
+        color: color,
+        trail: [],
+        isPinned: false
+    };
+
+    ballsRef.current.push(newBall);
+    setBalls([...ballsRef.current]); // Update state to trigger re-renders if necessary (e.g. counters)
+  };
+
+  const togglePin = (pos: Vector2) => {
+    for (const ball of ballsRef.current) {
+        // Increased hit area slightly for better touch experience (radius + 15)
+        if (dist(pos, ball.pos) < ball.radius + 15) { 
+            ball.isPinned = !ball.isPinned;
+            if (ball.isPinned) {
+                ball.vel = { x: 0, y: 0 };
+                // Haptic feedback for mobile
+                if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                    navigator.vibrate(50);
+                }
+            } else {
+                if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                    navigator.vibrate(20);
+                }
+            }
+            return true;
+        }
+    }
+    return false;
+  };
+
   const handlePointerDown = (e: React.PointerEvent) => {
     if (!config.isGodMode || !paused) return;
     
@@ -245,6 +321,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
     if (!rect) return;
     const mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     mousePosRef.current = mousePos;
+
+    // --- Start Long Press Logic (for Pinning on Touch) ---
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressStartPosRef.current = mousePos;
+    longPressTimerRef.current = setTimeout(() => {
+        const success = togglePin(mousePosRef.current);
+        if (success) {
+             // If pinned via long press, stop any potential drag
+             dragStateRef.current = null;
+        }
+        longPressTimerRef.current = null;
+    }, 600);
+    // -----------------------------------------------------
 
     // 1. Check Velocity Handle Click
     for (const ball of ballsRef.current) {
@@ -284,6 +373,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
       const mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       mousePosRef.current = mousePos;
 
+      // --- Cancel Long Press if Moved ---
+      if (longPressTimerRef.current && longPressStartPosRef.current) {
+          if (dist(mousePos, longPressStartPosRef.current) > 10) {
+              clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = null;
+          }
+      }
+      // ----------------------------------
+
       // Drag Logic
       if (dragStateRef.current) {
           const ball = ballsRef.current.find(b => b.id === dragStateRef.current?.id);
@@ -300,6 +398,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
   };
 
   const handlePointerUp = () => {
+      if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+      }
       dragStateRef.current = null;
   };
 
@@ -311,17 +413,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
       if (!rect) return;
       const mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
-      // Check ball click to toggle Pin
-      for (const ball of ballsRef.current) {
-          if (dist(mousePos, ball.pos) < ball.radius + 5) {
-              ball.isPinned = !ball.isPinned;
-              // Reset velocity if pinned
-              if (ball.isPinned) {
-                  ball.vel = { x: 0, y: 0 };
-              }
-              return;
-          }
-      }
+      // Shared logic
+      togglePin(mousePos);
   };
 
   // Main Game Loop
@@ -333,15 +426,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
     if (!ctx) return;
 
     const handleResize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
+      // Set physical size for high DPI
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      
+      // Set logical size for CSS
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+
+      // Scale drawing context so we can continue using logical coordinates
+      ctx.scale(dpr, dpr);
     };
     window.addEventListener('resize', handleResize);
     handleResize();
 
     const update = () => {
-      const width = canvas.width;
-      const height = canvas.height;
+      // Use logical dimensions for physics and positioning logic
+      const width = window.innerWidth;
+      const height = window.innerHeight;
       const center = { x: width / 2, y: height / 2 };
       const maxRadius = Math.min(width, height) * 0.45 * config.baseScale;
       
@@ -368,6 +471,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
       }
 
       // -- Background --
+      // Use logical coordinates for drawing, the context scale handles the rest
       const gradient = ctx.createRadialGradient(center.x, center.y, maxRadius * 0.2, center.x, center.y, Math.max(width, height));
       gradient.addColorStop(0, '#0f172a');
       gradient.addColorStop(0.4, '#1e1b4b');
@@ -407,6 +511,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
             // 1. Move Ball
             ball.vel.y += config.gravity / SUB_STEPS;
             ball.vel = mult(ball.vel, Math.pow(0.9995, 1 / SUB_STEPS));
+            
+            // --- Anti-Tunneling Fix ---
+            // Ensure the ball cannot travel more than 80% of its radius in a single sub-step.
+            // This guarantees collision detection catches it before it passes through a wall.
+            const currentSpeed = mag(ball.vel);
+            const maxStepSpeed = ball.radius * 0.8; 
+            const maxFrameSpeed = maxStepSpeed * SUB_STEPS; 
+
+            if (currentSpeed > maxFrameSpeed) {
+                ball.vel = mult(ball.vel, maxFrameSpeed / currentSpeed);
+            }
+            // --------------------------
+
             ball.pos = add(ball.pos, mult(ball.vel, 1 / SUB_STEPS));
 
             // 2. Ball-Ball Collision (Optimized for Sub-steps)
@@ -438,6 +555,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
                             if (vDotN < 0) {
                                 ball.vel = sub(ball.vel, mult(normal, 2 * vDotN));
                                 ball.vel = mult(ball.vel, currentElasticity); // Use mic elasticity for dynamics
+                                
+                                // Record Collision
+                                collisionCountRef.current++;
                             }
                         } else {
                             // Dynamic - Dynamic Collision
@@ -456,6 +576,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
                                 
                                 ball.vel = mult(ball.vel, 0.99);
                                 other.vel = mult(other.vel, 0.99);
+                                
+                                // Record Collision
+                                collisionCountRef.current++;
                             }
                         }
                     }
@@ -505,6 +628,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
                                  if (config.isDestructible) {
                                      manualGapsRef.current.add(wallId);
                                  }
+
+                                 // Record Wall Collision
+                                 // Logic: If ball collisions disabled (default mode), always count.
+                                 // If ball collisions enabled, only count if recordWallCollisions is true.
+                                 if (!config.enableBallCollisions || config.recordWallCollisions) {
+                                     collisionCountRef.current++;
+                                 }
                              }
                         }
                     }
@@ -549,6 +679,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
                                 if (config.isDestructible) {
                                     manualGapsRef.current.add(wallId);
                                 }
+
+                                // Record Wall Collision
+                                if (!config.enableBallCollisions || config.recordWallCollisions) {
+                                    collisionCountRef.current++;
+                                }
+
                             } else {
                                 // Prevent sticking
                                 if (dist < ball.radius * 0.5) {
@@ -833,7 +969,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
       window.removeEventListener('resize', handleResize);
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [config, paused, restartTrigger, playBounceSound]);
+  }, [config, paused, restartTrigger, playBounceSound, setTotalCollisions]);
 
   return (
     <canvas 
@@ -844,6 +980,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
         onContextMenu={handleContextMenu}
+        onDoubleClick={handleDoubleClick}
     />
   );
 };

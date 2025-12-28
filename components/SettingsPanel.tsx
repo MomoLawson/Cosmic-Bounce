@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { GameConfig, SoundScheme, Language } from '../types';
-import { Settings, RefreshCw, Hexagon, Circle, Minus, Plus, RotateCw, Spline, Trash2, Volume2, VolumeX, Scaling, Shield, Layers, Zap, Dna, Disc, Maximize, Mic, MicOff, Globe } from 'lucide-react';
+import { Settings, RefreshCw, Hexagon, Circle, Minus, Plus, RotateCw, Spline, Trash2, Volume2, VolumeX, Scaling, Shield, Layers, Zap, Dna, Disc, Maximize, Mic, MicOff, Globe, Activity } from 'lucide-react';
 import { LANGUAGES, t } from '../utils/translations';
 
 interface SettingsPanelProps {
@@ -26,7 +26,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, setConfig,
   };
 
   return (
-    <div className={`absolute top-4 left-4 z-10 transition-all duration-300 ${isOpen ? 'w-80' : 'w-12'}`}>
+    <div className={`absolute top-4 left-4 z-10 transition-all duration-300 ${isOpen ? 'w-80 max-w-[calc(100vw-2rem)]' : 'w-12'}`}>
       <div className="bg-black/60 backdrop-blur-md border border-white/20 text-white rounded-xl overflow-hidden shadow-2xl">
         
         {/* Header / Toggle */}
@@ -233,6 +233,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, setConfig,
                   className="w-4 h-4 accent-orange-500"
                 />
               </div>
+              
+              {/* Conditional Wall Hit Record Setting */}
+              {config.enableBallCollisions && (
+                   <div className="flex items-center justify-between p-2 bg-orange-900/20 rounded-lg mt-1 border border-orange-500/20 ml-2">
+                    <span className="text-xs flex items-center gap-2 text-gray-300">
+                        <Activity size={12} className="text-gray-400"/> 
+                        {text.recordWallCollisions}
+                    </span>
+                    <input 
+                      type="checkbox" 
+                      checked={config.recordWallCollisions}
+                      onChange={(e) => updateConfig('recordWallCollisions', e.target.checked)}
+                      className="w-3 h-3 accent-orange-500"
+                    />
+                  </div>
+              )}
 
                <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg mt-2">
                 <span className="text-sm flex items-center gap-2">
