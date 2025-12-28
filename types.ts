@@ -57,7 +57,7 @@ export const INITIAL_CONFIG: GameConfig = {
   isCircle: false,
   gapCount: 0,
   rotationSpeed: 0.005,
-  spawnPos: { x: 0, y: -0.2 },
+  spawnPos: { x: 0, y: 0 }, // Changed from { x: 0, y: -0.2 } to center
   gravity: 0.05,
   elasticity: 0.95,
   ballSize: 6,

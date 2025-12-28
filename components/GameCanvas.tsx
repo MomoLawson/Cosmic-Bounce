@@ -35,6 +35,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
   const requestRef = useRef<number>(0);
   const rotationRef = useRef<number>(0);
   
+  // Track previous window size for centering logic
+  const windowSizeRef = useRef<{ width: number, height: number }>({ width: window.innerWidth, height: window.innerHeight });
+
   // Collision Tracking
   const collisionCountRef = useRef<number>(0);
 
@@ -427,19 +430,45 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ config, paused, restartT
 
     const handleResize = () => {
       const dpr = window.devicePixelRatio || 1;
+      const newWidth = window.innerWidth;
+      const newHeight = window.innerHeight;
+
       // Set physical size for high DPI
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
+      canvas.width = newWidth * dpr;
+      canvas.height = newHeight * dpr;
       
       // Set logical size for CSS
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${window.innerHeight}px`;
+      canvas.style.width = `${newWidth}px`;
+      canvas.style.height = `${newHeight}px`;
 
       // Scale drawing context so we can continue using logical coordinates
       ctx.scale(dpr, dpr);
+
+      // --- Shift balls to maintain relative center position ---
+      const deltaX = (newWidth - windowSizeRef.current.width) / 2;
+      const deltaY = (newHeight - windowSizeRef.current.height) / 2;
+
+      if (Math.abs(deltaX) > 0.1 || Math.abs(deltaY) > 0.1) {
+          ballsRef.current.forEach(ball => {
+              ball.pos.x += deltaX;
+              ball.pos.y += deltaY;
+              // Shift trail as well to prevent glitches
+              ball.trail.forEach(t => {
+                  t.x += deltaX;
+                  t.y += deltaY;
+              });
+          });
+      }
+      
+      // Update stored window size
+      windowSizeRef.current = { width: newWidth, height: newHeight };
+      // ---------------------------------------------------------
     };
-    window.addEventListener('resize', handleResize);
+    
+    // Initial setup
     handleResize();
+    
+    window.addEventListener('resize', handleResize);
 
     const update = () => {
       // Use logical dimensions for physics and positioning logic

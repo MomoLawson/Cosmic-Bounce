@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { SettingsPanel } from './components/SettingsPanel';
 import { GameConfig, INITIAL_CONFIG } from './types';
-import { Pause, Play } from 'lucide-react';
+import { Pause, Play, Github } from 'lucide-react';
 import { t } from './utils/translations';
 
 export default function App() {
@@ -11,6 +11,15 @@ export default function App() {
   const [paused, setPaused] = useState(false);
   const [restartTrigger, setRestartTrigger] = useState(0);
   const [collisionCount, setCollisionCount] = useState(0);
+
+  // Handle URL redirects
+  useEffect(() => {
+    const path = window.location.pathname;
+    // Check if the user is visiting /sources or /sources/
+    if (path === '/sources' || path === '/sources/') {
+      window.location.replace('https://github.com/MomoLawson/Cosmic-Bounce');
+    }
+  }, []);
 
   const handleRestart = () => {
     setRestartTrigger(prev => prev + 1);
@@ -55,6 +64,17 @@ export default function App() {
             {text.collisionCount}: <span className="text-white">{collisionCount}</span>
         </p>
       </div>
+
+      {/* GitHub Link */}
+      <a 
+        href="https://github.com/MomoLawson/Cosmic-Bounce"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute bottom-4 left-4 z-50 p-2 text-white/30 hover:text-white transition-all hover:scale-110"
+        title="View on GitHub"
+      >
+        <Github size={24} />
+      </a>
     </div>
   );
 }
